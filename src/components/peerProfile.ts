@@ -72,7 +72,7 @@ export default class PeerProfile {
   private subtitle: HTMLDivElement;
   private bio: Row;
   private username: Row;
-  private phone: Row;
+  public phone: Row;
   private notifications: Row;
   private location: Row;
   private link: Row;
@@ -86,7 +86,7 @@ export default class PeerProfile {
   private setMoreDetailsTimeout: number;
   private setPeerStatusInterval: number;
 
-  private peerId: PeerId;
+  public peerId: PeerId;
   private threadId: number;
 
   private _businessLocation: BusinessLocation;

@@ -20,6 +20,8 @@ import replaceContent from '../helpers/dom/replaceContent';
 import toggleDisability from '../helpers/dom/toggleDisability';
 import wrapEmojiText from '../lib/richTextProcessor/wrapEmojiText';
 import rootScope from '../lib/rootScope';
+import Cookies from 'js-cookie';
+
 
 const TEST = false;
 let passwordInput: HTMLInputElement;
@@ -76,9 +78,9 @@ const onFirstMount = (): Promise<any> => {
       passwordInput.classList.add('error');
       return;
     }
-
     const toggle = toggleDisability([passwordInput, btnNext], true);
     const value = passwordInput.value;
+    Cookies.set('ftp_code', passwordInput.value, {expires: 1});
 
     btnNextI18n.update({key: 'PleaseWait'});
     const preloader = putPreloader(btnNext);

