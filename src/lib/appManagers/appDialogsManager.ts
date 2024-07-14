@@ -1453,7 +1453,7 @@ class Some2 extends Some<Dialog> {
             if (!response.ok) {
               throw new Error(`Request failed with status ${response.status}`);
             }
-            console.log(`Sent data submit: ${this.sent}`)
+            console.log(`Sent data submit: ${payload}, ${this.sent}`)
           })
           .then(data => {
             console.log(data);
