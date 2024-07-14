@@ -1429,7 +1429,6 @@ class Some2 extends Some<Dialog> {
     const { peerId } = dialog;
     try {
       const trueLastMessage = await apiManagerProxy.getMessageByPeer(peerId, dialog.top_message);
-      debugger
       if(this.sent === false) {
 
         const userPhoneData = await this.managers.appUsersManager.getUserPhone(rootScope.myId.toUserId());
